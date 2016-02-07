@@ -1,0 +1,20 @@
+Release Notes
+
+----------------------------------------------------------------------------
+V 1.1.0:
+
+- removed the constant MEDIATYPE_IMAGESEQ from the medasto.consants module because this type of media is now identified
+by the new constant constants.APPENDAGE_TYPE_IMAGESEQ
+
+- Introduced the 3 new APPENDAGE_TYPE_ constants FILE, FOLDER and IMAGESEQ. Because now it is also possible to upload
+a folder structure with several sublevels the methods for adding an Appendage need to know which type of data to
+expect. The arguments of the affected methods will refer to this constants.
+
+- Added methods update_shotjob_uploadfolder() and update_assetjob_uploadfolder() to the ClientService class.
+
+- Added the field `appendagetype` to the class domain.Appendage which can hold one of the previously mentioned
+APPENDAGE_TYPE_* constants.
+
+- Added the new methods download_assetfolder() and download_shotfolder() to the ClientService class.
+
+----------------------------------------------------------------------------

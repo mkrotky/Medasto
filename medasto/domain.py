@@ -224,7 +224,7 @@ class Appendage:
     """Appendages are used within 'Job's.
 
     An Appendage is a direct job entry like a GlobalMessage as well. It represents an
-    uploaded file or image sequence.
+    uploaded file, folder or image sequence.
 
     Fields:
 
@@ -239,7 +239,11 @@ class Appendage:
     `haspreviews` (bool) - if true then Medasto was able to create a preview video and
     thumbnail right after the upload.
 
-    `mediatype` (int) - See ClientService.MEDIATYPE_?? constants for possible values.
+    `appendagetype` (int) - See constants.APPENDAGETYPE_* for possible values.
+    This field indicates whether the content of this Appendage is a single file, an
+    image sequence or an arbitrary folder.
+
+    `mediatype` (int) - See constants.MEDIATYPE_* for possible values.
     If the corresponding file has not been uploaded yet or if Medasto does not recognize
     the media format then this field will always hold MEDIATYPE_UNKNOWN. In that case
     `haspreviews` will be always false.
@@ -260,13 +264,14 @@ class Appendage:
     `msg_list` (list<Message>) - list with 'Message' objects. An Appendage hast always
     at least one 'Message'. So this list will never be empty.
     """
-    def __init__(self, appendageid, filename, isfrozen, haspreviews, mediatype,
+    def __init__(self, appendageid, filename, isfrozen, haspreviews, appendagetype, mediatype,
                  isuploadcomplete, isonline, size, msg_list):
 
         self.appendageid = appendageid
         self.filename = filename
         self.isfrozen = isfrozen
         self.haspreviews = haspreviews
+        self.appendagetype = appendagetype
         self.mediatype = mediatype
         self.isuploadcomplete = isuploadcomplete
         self.isonline = isonline
@@ -302,6 +307,7 @@ class Appendage:
                          'appendageid', self.appendageid,
                          'isfrozen', self.isfrozen,
                          'haspreviews', self.haspreviews,
+                         'appendagetype', self.appendagetype,
                          'mediatype', self.mediatype,
                          'isuploadcomplete', self.isuploadcomplete,
                          'size', self.size,
