@@ -27,8 +27,8 @@ class LocalArchivePathManager:
     forced to use the Local Archive (which usually receives the files before they get
     deleted on the server).
 
-    If you download the files manually you can simply rely on having a complete file
-    or image sequence when the download method returns without Exception.
+    If you download the files manually you can simply rely on having a complete file,
+    folder or image sequence when the download method returns without Exception.
     But if you choose to work with a Local Archive you must carefully check the
     path objects returned by one of the methods local_archive_path_XX(). Just checking
     for the presence of the file is not enough. Though the Synchronisation Tool is
@@ -40,9 +40,10 @@ class LocalArchivePathManager:
     file with the medasto.domain.Appendage.size field. Make sure to compare with the
     actual file size and not the file size a file is occupying on the
     filesystem. If the Appendage contains an image sequence then its size field
-    will contain the sum of all image files in bytes. So this can be used to
-    validate an image sequence as well. Appendage.isonline and .isuploadcomplete
-    might be helpful too.
+    will contain the sum of all image files in bytes. In case of an appendage folder
+    the size field holds the sum of all files within that folder (recursive). So this
+    can be used to validate an image sequence or appendage folder as well.
+    Appendage.isonline and .isuploadcomplete might be helpful too.
     """
 
     def __init__(self, archive_path, dct_config):
@@ -70,8 +71,8 @@ class LocalArchivePathManager:
         have a look at the doc string of the domain module. There you can
         find the structure of a project.
 
-        If the Appendage contains an image sequence instead of a single file
-        then the returned path leads to the folder containing the images.
+        If the Appendage contains an image sequence or folder instead of a single
+        file then the returned path leads to the folder containing the files.
 
         `assetlist_id` - from the AssetList which contains the `asset_id`. The
         method ClientService.get_asset_list(..) includes this assetlist_id too.
@@ -113,8 +114,8 @@ class LocalArchivePathManager:
         have a look at the doc string of the domain module. There you can
         find the structure of a project.
 
-        If the Appendage contains an image sequence instead of a single file
-        then the returned path leads to the folder containing the images.
+        If the Appendage contains an image sequence or folder instead of a single
+        file then the returned path leads to the folder containing the files.
 
         `shotlist_id` - from the 'ShotList' which contains the `stage_id` and
         the `shot_id`. The methods mentioned in the `shot_id` section below

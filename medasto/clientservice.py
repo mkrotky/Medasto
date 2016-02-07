@@ -145,13 +145,15 @@ a separate username for each of the instances as well.
 import json
 import os
 import os.path
+import pathlib
 from . import _remoteservice
-# import medasto.domain
 from . import domain
 from . import goodies
 
+
 __author__ = 'Michael Krotky'
 
+_FOLDER_UPLOAD_ALL_COMPLETE = -1
 _IMAGESEQ_UPLOAD_COMPLETE = "IMAGESEQ**TRANSFER**COMPLETE"
 _ERROR_MSG_ASSET_IDS = "You must either specify asset_list_id and asset_id together or the custom_asset_id"
 _ERROR_MSG_SHOT_IDS = "You must either specify shot_list_id, stageId and shot_id together or the custom_shot_id"
@@ -355,17 +357,20 @@ class ClientService:
             raise Exception(_ERROR_MSG_ASSET_IDS)
         self._rmtservice.request(url, method='PUT', body=jsondata)
 
-    def update_assetjob_addappendage(self,  msgtext, statusid, filename, asset_list_id=None, asset_id=None,
-                                     custom_asset_id=None, job_id=None, jobdef_id=None):
-        """Adds a 'Appendage' to the specified Job.
+    def update_assetjob_addappendage(self, appendage_type, msgtext, statusid, filename, asset_list_id=None,
+                                     asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
+        """Adds an 'Appendage' to the specified Job.
 
         This method does NOT upload any file data. It just adds a new entry to the
         specified 'Job'. The entry will be visible to all other users but the
         media will be marked offline until you upload the file with the method
-        update_assetjob_uploadfile(..).
+        update_assetjob_uploadfile(..) or update_assetjob_uploadfolder(..).
 
         An 'Appendage' cannot exist without at least one 'Message'. The `msgtext`
         and `statusid` parameters will be used to create the 'Message'.
+
+        `appendage_type` (int) - medasto.constants.APPENDAGETYPE_FILE or .APPENDAGETYPE_FOLDER.
+        For Appendages that will contain an image sequence there is a separate add-method.
 
         `msgText` (str) - must not be None but can be an empty string.
 
@@ -384,10 +389,11 @@ class ClientService:
         if asset_list_id is not None and asset_id is not None:
             url = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
                                  jobordef['isDefId'], 'addAppendage')
-            jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename))
+            jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename, appendageType=appendage_type))
         elif custom_asset_id is not None:
             url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], "addAppendage")
-            jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename, customId=custom_asset_id))
+            jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename,
+                                       customId=custom_asset_id, appendageType=appendage_type))
         else:
             raise Exception(_ERROR_MSG_ASSET_IDS)
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
@@ -441,7 +447,8 @@ class ClientService:
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a single file after a successful
-        execution of update_assetjob_addappendage(..). It can be called only
+        execution of update_assetjob_addappendage(..) with
+        appendage_type=constants.APPENDAGETYPE_FILE. It can be called only
         once for an 'Appendage'. This is done so on purpose to prevent the file
         of an existing 'Appendage' from being inadvertently overwritten.
 
@@ -465,7 +472,60 @@ class ClientService:
 
         with open(filepath, 'rb') as file:
             self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
-                                    extra_headers=extra_headers)
+                                     extra_headers=extra_headers)
+
+    def update_assetjob_uploadfolder(self,  folderpath, appendage_id, asset_list_id=None, asset_id=None,
+                                     custom_asset_id=None, job_id=None, jobdef_id=None):
+        """To be used for uploads after an 'Appendage' has been added.
+
+        This method is used to upload a folder (recursively) after a successful
+        execution of update_assetjob_addappendage(..) with
+        appendage_type=constants.APPENDAGETYPE_FOLDER. It can be called only
+        once for an 'Appendage'. This is done so on purpose to prevent files
+        of an existing 'Appendage' from being inadvertently overwritten.
+
+        If this method returns without raising an Exception the upload can be expected
+        to be complete.
+
+        The `folderpath` for the folder to be uploaded.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+        """
+        pathlist_filedict = self._get_folder_structure(folderpath)
+        pathlist = pathlist_filedict[0]  # relative paths to files and empty folders as expected by the server
+        filedict = pathlist_filedict[1]  # key: file_id, value: absolute file paths
+
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        if asset_list_id is not None and asset_id is not None:
+            url = _url_from_args(
+                'assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
+                appendage_id, 'initFolderUpload')
+            jsondata = json.dumps(dict(pathlist=pathlist))
+        elif custom_asset_id is not None:
+            url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], 'appendage',
+                                 appendage_id, "initFolderUpload")
+            jsondata = json.dumps(dict(pathlist=pathlist, customId=custom_asset_id))
+        else:
+            raise Exception(_ERROR_MSG_ASSET_IDS)
+
+        result_str = self._rmtservice.request(url, method='POST', body=jsondata)
+        uploadjobid_nextfileid = json.loads(result_str)
+        uploadjob_id = uploadjobid_nextfileid[0]
+        nextfile_id = int(uploadjobid_nextfileid[1])
+
+        #  A _FOLDER_UPLOAD_ALL_COMPLETE signal returned by the server guarantees that the upload is really complete..
+        while nextfile_id != _FOLDER_UPLOAD_ALL_COMPLETE:
+            if nextfile_id not in filedict:
+                raise Exception("Server request an unknown file id: " + str(nextfile_id))
+            absfilepath = filedict[nextfile_id]
+            if not os.path.isfile(absfilepath):
+                # This can onyl mean that the file has been deleted after the creation of the pathlist for the server.
+                raise Exception(
+                    "Given folder '" + folderpath + "' does not contain the requested file '" + absfilepath) + "'."
+            url = _url_from_args("processAppendageFolderUpload", "uploadJob", uploadjob_id, 'file', nextfile_id)
+            with open(absfilepath, 'rb') as file:
+                nextfile_id = int(self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream'))
 
     def update_assetjob_init_imageseq_upload(self,  filenamelist, appendage_id, asset_list_id=None, asset_id=None,
                                              custom_asset_id=None, job_id=None, jobdef_id=None):
@@ -567,6 +627,38 @@ class ClientService:
                 raise Exception(
                     "Given folder '" + folderpath + "' does not contain the requested file '" + nextitem) + "'."
             nextitem = self.upload_imageseq_onefile(uploadjob_id, filepath)
+
+    def _get_folder_structure(self, folderpath):
+        """Returns a tuple ( pathlist, filedict ).
+
+        pathlist contains dictionaries with relative paths from all files and empty directories within folderpath.
+        filedict contains absolute paths to all files within the folder. The keys are unique file ids within folderpath.
+        """
+        if not os.path.isdir(folderpath):
+            raise Exception("Given path '" + folderpath + "' does not exist or is not a folder.")
+
+        pathlist = []
+        filedict = {}
+        fileid = 1  # server reqires to start counting at 1 or above.
+        for root, dirs, files in os.walk(folderpath, topdown=True, onerror=self._walktree_error_handler):
+            if len(dirs) == 0 and len(files) == 0:
+                relpath = os.path.relpath(root, folderpath)
+                elements = pathlib.PurePath(relpath).parts
+                pathlist.append({'id': fileid, 'elements': elements, 'size': 0, 'isdir': True})
+                fileid += 1
+            else:
+                for name in files:
+                    abspath = os.path.join(root, name)
+                    relpath = os.path.relpath(abspath, folderpath)
+                    elements = pathlib.PurePath(relpath).parts
+                    size = os.path.getsize(abspath)
+                    pathlist.append({'id': fileid, 'elements': elements, 'size': size})
+                    filedict[fileid] = abspath
+                    fileid += 1
+        return pathlist, filedict
+
+    def _walktree_error_handler(self, ex):
+        raise ex  # OSError with filename attribute
 
     def update_assetjob_freeze_appendage(self, freeze, appendage_id, asset_list_id=None, asset_id=None,
                                          custom_asset_id=None, job_id=None, jobdef_id=None):
@@ -997,17 +1089,20 @@ class ClientService:
             raise Exception(_ERROR_MSG_SHOT_IDS)
         self._rmtservice.request(url, method='PUT', body=jsondata)
 
-    def update_shotjob_addappendage(self, msgtext, statusid, filename, shotlist_id=None, stage_id=None,
+    def update_shotjob_addappendage(self, appendage_type, msgtext, statusid, filename, shotlist_id=None, stage_id=None,
                                     shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
         """Adds an 'Appendage' to the specified 'Job'.
 
         This method does NOT upload any file data. It just adds a new entry to the
         specified 'Job'. The entry will be visible to all other users but the
         media will be marked offline until you upload the file with the method
-        update_shotjob_uploadfile(..).
+        update_shotjob_uploadfile(..) or update_shotjob_uploadfolder(..).
 
         An 'Appendage' cannot exist without at least one 'Message'. The `msgtext`
         and `statusid` parameters will be used to create the 'Message'.
+
+        `appendage_type` (int) - medasto.constants.APPENDAGETYPE_FILE or .APPENDAGETYPE_FOLDER.
+        For Appendages that will contain an image sequence there is a separate add-method.
 
         `msgText` (str) - must not be None but can be an empty string.
 
@@ -1025,11 +1120,13 @@ class ClientService:
         if shotlist_id is not None and stage_id is not None and shot_id is not None:
             url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job',
                                  jobordef['id'], jobordef['isDefId'], 'addAppendage')
-            jsondata = json.dumps(dict(customId=custom_shot_id, statusId=statusid, text=msgtext, fileName=filename))
+            jsondata = json.dumps(dict(statusId=statusid, text=msgtext,
+                                       fileName=filename, appendageType=appendage_type))
         elif custom_shot_id is not None:
             url = _url_from_args(
                 'shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'addAppendage')
-            jsondata = json.dumps(dict(customId=custom_shot_id, statusId=statusid, text=msgtext, fileName=filename))
+            jsondata = json.dumps(dict(customId=custom_shot_id, statusId=statusid, text=msgtext,
+                                       fileName=filename, appendageType=appendage_type))
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
@@ -1082,7 +1179,8 @@ class ClientService:
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a single file after a successful
-        execution of update_shotjob_addappendage(..). It can be called only
+        execution of update_shotjob_addappendage(..) with
+        appendage_type=constants.APPENDAGETYPE_FILE. It can be called only
         once for an 'Appendage'. This is done so on purpose to prevent the file
         of an existing 'Appendage' from being inadvertently overwritten.
 
@@ -1106,7 +1204,60 @@ class ClientService:
 
         with open(filepath, 'rb') as file:
             self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
-                                    extra_headers=extra_headers)
+                                     extra_headers=extra_headers)
+
+    def update_shotjob_uploadfolder(self,  folderpath, appendage_id, shotlist_id=None, stage_id=None,
+                                    shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
+        """To be used for uploads after an 'Appendage' has been added.
+
+        This method is used to upload a folder (recursively) after a successful
+        execution of update_shotjob_addappendage(..) with
+        appendage_type=constants.APPENDAGETYPE_FOLDER. It can be called only
+        once for an 'Appendage'. This is done so on purpose to prevent files
+        of an existing 'Appendage' from being inadvertently overwritten.
+
+        If this method returns without raising an Exception the upload can be expected
+        to be complete.
+
+        The `folderpath` for the folder to be uploaded.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+        """
+        pathlist_filedict = self._get_folder_structure(folderpath)
+        pathlist = pathlist_filedict[0]  # relative paths to files and empty folders as expected by the server
+        filedict = pathlist_filedict[1]  # key: file_id, value: absolute file paths
+
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        if shotlist_id is not None and stage_id is not None and shot_id is not None:
+            url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'initFolderUpload')
+            jsondata = json.dumps(dict(pathlist=pathlist))
+        elif custom_shot_id is not None:
+            url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
+                                 appendage_id, 'initFolderUpload')
+            jsondata = json.dumps(dict(pathlist=pathlist, customId=custom_shot_id))
+        else:
+            raise Exception(_ERROR_MSG_SHOT_IDS)
+
+        result_str = self._rmtservice.request(url, method='POST', body=jsondata)
+        uploadjobid_nextfileid = json.loads(result_str)
+        uploadjob_id = uploadjobid_nextfileid[0]
+        nextfile_id = int(uploadjobid_nextfileid[1])
+
+        #  A _FOLDER_UPLOAD_ALL_COMPLETE signal returned by the server guarantees that the upload is really complete..
+        while nextfile_id != _FOLDER_UPLOAD_ALL_COMPLETE:
+            if nextfile_id not in filedict:
+                raise Exception("Server request an unknown file id: " + str(nextfile_id))
+            absfilepath = filedict[nextfile_id]
+            if not os.path.isfile(absfilepath):
+                # This can onyl mean that the file has been deleted after the creation of the pathlist for the server.
+                raise Exception(
+                    "Given folder '" + folderpath + "' does not contain the requested file '" + absfilepath) + "'."
+            url = _url_from_args("processAppendageFolderUpload", "uploadJob", uploadjob_id, 'file', nextfile_id)
+            with open(absfilepath, 'rb') as file:
+                nextfile_id = int(self._rmtservice.request(
+                    url, method='POST', body=file, contenttype='application/octet-stream'))
 
     def update_shotjob_init_imageseq_upload(self,  filenamelist, appendage_id, shotlist_id=None, stage_id=None,
                                             shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
@@ -1765,22 +1916,22 @@ class ClientService:
                            asset_list_id=None, asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
         """Downloads the file of the specified 'Appendage'.
 
-        If the Appendage contains an image sequence then this method cannot be
-        used to download the original image files but THUMB and PREVIEW
+        If the Appendage contains an image sequence or folder then this method
+        cannot be used to download the original files but THUMB and PREVIEW
         versions (if available) can be downloaded with this method. In order
-        to download the original files of an image sequence the method
-        download_assetimageseq(..) can be used. If you have a reference to
-        an 'Appendage' and you don't know whether it contains an image sequence
-        you can check its `mediatype` attribute against the constant
-        MEDIATYPE_IMAGESEQ of this module.
+        to download the original files of an image sequence or folder the methods
+        download_assetimageseq(..) / download_assetfolder(..) can be used. If you
+        have a reference to an 'Appendage' and you don't know the content
+        you can check its `appendagetype` attribute which contains one of the
+        constants.APPENDAGE_TYPE_* constants.
 
         `filepath` - The destination file path. Can be either a str or a byte-like
         object as expected by the native 'open' function of Python. The ´filepath´
         must not already exist otherwise an Exception is thrown. Parent folders are
         created if necessary.
 
-        `fileversion` - possible values are the constants FILEVERSION_*. of this
-        module. Use 'Appendage'.isonline to check whether the ORIGINAL version
+        `fileversion` - possible values are the constants constants.FILEVERSION_*.
+        Use 'Appendage'.isonline to check whether the ORIGINAL version
         is available. Use 'Appendage'.haspreviews to check whether the PREVIEW
         and THUMB versions are available for download.
 
@@ -1809,11 +1960,11 @@ class ClientService:
 
     def download_assetimageseq(self, folderpath, appendage_id,
                                asset_list_id=None, asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
-        """Downloads of files of an image sequence into the specified folder.
+        """Downloads files of an image sequence into the specified folder.
 
         This method can only be used to download the original uploaded files
-        of an image sequence. So `mediatype` of the specified 'Appendage'
-        must equal MEDIATYPE_IMAGESEQ. In order to download the PREVIEW or
+        of an image sequence. So `appendagetype` of the specified 'Appendage'
+        must equal APPENDAGETYPE_IMAGESEQ. In order to download the PREVIEW or
         THUMB version of an image sequence the method download_assetfile(..)
         must be used.
 
@@ -1861,26 +2012,84 @@ class ClientService:
         else:
             raise Exception(_ERROR_MSG_ASSET_IDS)
 
+    def download_assetfolder(self, folderpath, appendage_id,
+                             asset_list_id=None, asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
+        """Downloads files of an appendage folder into the specified folder.
+
+        This method can only be used to download the original uploaded files
+        of an appendage folder. So `appendagetype` of the specified 'Appendage'
+        must equal APPENDAGETYPE_FOLDER. In order to download the PREVIEW or
+        THUMB version of an appendage folder the method download_assetfile(..)
+        must be used.
+
+        `folderpath` - The destination folder path must be a str object. If it
+        doesn't already exist it will be created including parent folders as
+        necessary. If it already exists as a regular file then an Exception is
+        thrown. If the destination folder already exists and is not empty then
+        existing files with the same size are skipped. Existing files with
+        a different size will be overwritten. That means you can also use this
+        method to resume a previously interrupted download.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+
+        If an Error occurs during the download then already downloaded files
+        remain on disk.
+        """
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        _ensure_folder_existing(folderpath)
+        dctbody = dict()
+        if asset_list_id is not None and asset_id is not None:
+            urlgetlist = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
+                                        jobordef['isDefId'], 'appendage', appendage_id, 'folder', 'getpaths')
+            pathlist_str = self._rmtservice.request(urlgetlist)
+            urlgetfile = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
+                                        jobordef['isDefId'], 'appendage', appendage_id, 'folder', 'getfile')
+
+        elif custom_asset_id is not None:
+            dctbody['customId'] = custom_asset_id
+            urlgetlist = _url_from_args('assetList', 'asset_c', 'job', jobordef['id'], jobordef['isDefId'],
+                                        'appendage', appendage_id, 'folder', 'getpaths')
+            pathlist_str = self._rmtservice.request(urlgetlist, body=json.dumps(dctbody))
+            urlgetfile = _url_from_args('assetList', 'asset_c', 'job', jobordef['id'], jobordef['isDefId'],
+                                        'appendage', appendage_id, 'folder', 'getfile')
+        else:
+            raise Exception(_ERROR_MSG_ASSET_IDS)
+
+        pathlist = json.loads(pathlist_str)['items']
+        for pathdict in pathlist:
+            pathelements = pathdict['pathElements']
+            isfolder = pathdict['isFolder']
+            abspath = os.path.join(folderpath, *pathelements)
+            if isfolder:
+                _ensure_folder_existing(abspath)
+            else:
+                size = pathdict['size']
+                if not _check_file_samesize_existing(abspath, size):
+                    dctbody['pathElements'] = pathelements
+                    _ensure_folder_existing(os.path.dirname(abspath))
+                    self._rmtservice.download(urlgetfile, abspath, body=json.dumps(dctbody))
+
     def download_shotfile(self, filepath, appendage_id, fileversion, shotlist_id=None, stage_id=None, shot_id=None,
                           custom_shot_id=None, job_id=None, jobdef_id=None):
         """Downloads the file of the specified 'Appendage'.
 
-        If the Appendage contains an image sequence then this method cannot be
-        used to download the original image files but THUMB and PREVIEW
+        If the Appendage contains an image sequence or folder then this method
+        cannot be used to download the original files but THUMB and PREVIEW
         versions (if available) can be downloaded with this method. In order
-        to download the original files of an image sequence the method
-        download_shotimageseq(..) can be used. If you have a reference to
-        an 'Appendage' and you don't know whether it contains an image sequence
-        you can check its `mediatype` attribute against the constant
-        MEDIATYPE_IMAGESEQ of this module.
+        to download the original files of an image sequence or folder the methods
+        download_shotimageseq(..) / download_shotfolder(..) can be used. If you
+        have a reference to an 'Appendage' and you don't know the content
+        you can check its `appendagetype` attribute which contains one of the
+        constants.APPENDAGE_TYPE_* constants.
 
         `filepath` - The destination file path. Can be either a str or a byte-like
         object as expected by the native 'open' function of Python. The ´filepath´
         must not already exist otherwise an Exception is thrown. Parent folders are
         created if necessary.
 
-        `fileversion` - possible values are the constants FILEVERSION_*. of this
-        module. Use 'Appendage'.isonline to check whether the ORIGINAL version
+        `fileversion` - possible values are the constants constants.FILEVERSION_*.
+        Use 'Appendage'.isonline to check whether the ORIGINAL version
         is available. Use 'Appendage'.haspreviews to check whether the PREVIEW
         and THUMB versions are available for download.
 
@@ -1912,8 +2121,8 @@ class ClientService:
         """Downloads of files of an image sequence into the specified folder.
 
         This method can only be used to download the original uploaded files
-        of an image sequence. So `mediatype` of the specified 'Appendage'
-        must equal MEDIATYPE_IMAGESEQ. In order to download the PREVIEW or
+        of an image sequence. So `appendagetype` of the specified 'Appendage'
+        must equal APPENDAGETYPE_IMAGESEQ. In order to download the PREVIEW or
         THUMB version of an image sequence the method download_shotfile(..)
         must be used.
 
@@ -1934,8 +2143,8 @@ class ClientService:
         jobordef = _job_or_def_id(jobdef_id, job_id)
         _ensure_folder_existing(folderpath)
         if shotlist_id is not None and stage_id is not None and shot_id is not None:
-            urlgetlist = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
-                                        jobordef['isDefId'], 'appendage', appendage_id, 'getImageNames')
+            urlgetlist = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job',
+                                        jobordef['id'], jobordef['isDefId'], 'appendage', appendage_id, 'getImageNames')
             filelist_str = self._rmtservice.request(urlgetlist)
             filelist = json.loads(filelist_str)
             urlgetfile = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job',
@@ -1960,6 +2169,66 @@ class ClientService:
                     self._rmtservice.download(urlgetfile, filepath, body=jsondata)
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
+
+    def download_shotfolder(self, folderpath, appendage_id, shotlist_id=None, stage_id=None, shot_id=None,
+                            custom_shot_id=None, job_id=None, jobdef_id=None):
+        """Downloads files of an appendage folder into the specified folder.
+
+        This method can only be used to download the original uploaded files
+        of an appendage folder. So `appendagetype` of the specified 'Appendage'
+        must equal APPENDAGETYPE_FOLDER. In order to download the PREVIEW or
+        THUMB version of an appendage folder the method download_shotfile(..)
+        must be used.
+
+        `folderpath` - The destination folder path must be a str object. If it
+        doesn't already exist it will be created including parent folders as
+        necessary. If it already exists as a regular file then an Exception is
+        thrown. If the destination folder already exists and is not empty then
+        existing files with the same size are skipped. Existing files with
+        a different size will be overwritten. That means you can also use this
+        method to resume a previously interrupted download.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+
+        If an Error occurs during the download then already downloaded files
+        remain on disk.
+        """
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        _ensure_folder_existing(folderpath)
+        dctbody = dict()
+        if shotlist_id is not None and stage_id is not None and shot_id is not None:
+            urlgetlist = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job',
+                                        jobordef['id'], jobordef['isDefId'], 'appendage', appendage_id, 'folder',
+                                        'getpaths')
+            pathlist_str = self._rmtservice.request(urlgetlist)
+            urlgetfile = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job',
+                                        jobordef['id'], jobordef['isDefId'], 'appendage', appendage_id, 'folder',
+                                        'getfile')
+
+        elif custom_shot_id is not None:
+            dctbody['customId'] = custom_shot_id
+            urlgetlist = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'],
+                                        'appendage', appendage_id, 'folder', 'getpaths')
+            pathlist_str = self._rmtservice.request(urlgetlist, body=json.dumps(dctbody))
+            urlgetfile = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'],
+                                        'appendage', appendage_id, 'folder', 'getfile')
+        else:
+            raise Exception(_ERROR_MSG_ASSET_IDS)
+
+        pathlist = json.loads(pathlist_str)['items']
+        for pathdict in pathlist:
+            pathelements = pathdict['pathElements']
+            isfolder = pathdict['isFolder']
+            abspath = os.path.join(folderpath, *pathelements)
+            if isfolder:
+                _ensure_folder_existing(abspath)
+            else:
+                size = pathdict['size']
+                if not _check_file_samesize_existing(abspath, size):
+                    dctbody['pathElements'] = pathelements
+                    _ensure_folder_existing(os.path.dirname(abspath))
+                    self._rmtservice.download(urlgetfile, abspath, body=json.dumps(dctbody))
 
     def download_stbimage(self, filepath, stbsheet_id, shotlist_id=None, stage_id=None, shot_id=None,
                           custom_shot_id=None):
@@ -2028,6 +2297,24 @@ def _ensure_folder_existing(folderpath):
                       "' because a file with this name already exists.")
     else:
         os.makedirs(folderpath)
+
+
+def _check_file_samesize_existing(filepath, size):
+    """Returns true if the given `filepath` exists, is a file and has same size as `size`.
+
+    If filepath exists but with a different size then the filepath gets deleted and false
+    is returned. If filepath doesn't exist at all then false is returned as well.
+
+    Throws OSError if the given filepath points to a directory or if any other disk access
+    related errors occur.
+    """
+    if os.path.isdir(filepath):
+        raise OSError("Given file path '" + str(filepath) + "' exists but it is a folder.")
+    if os.path.isfile(filepath):
+        if os.path.getsize(filepath) == size:
+            return True
+        os.remove(filepath)
+    return False
 
 
 def _job_or_def_id(jobdef_id, job_id):
@@ -2121,8 +2408,8 @@ def _objhook_job(dctjob):
             for msg in entry['messages']:
                 msglist.append(_objhook_message(msg))
             appendage = domain.Appendage(entry['id'], entry['fileName'], entry['frozen'], entry['hasPreviews'],
-                                         entry['mediaType'], entry['uploadComplete'], entry['mediaOnline'],
-                                         entry['size'], msglist)
+                                         entry['appendageType'], entry['mediaType'], entry['uploadComplete'],
+                                         entry['mediaOnline'], entry['size'], msglist)
             job_entries.append(appendage)
         else:
             job_entries.append(_objhook_message(entry))
