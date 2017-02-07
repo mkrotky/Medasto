@@ -22,7 +22,6 @@ MEDIATYPE_UNKNOWN = 0   # ..not recognized (or upload not yet complete)
 MEDIATYPE_IMAGE = 1     # ..an image. So FILEVERSION_PREVIEW is an image as well.
 MEDIATYPE_VIDEO = 2     # ..a video. So FILEVERSION_PREVIEW is a video as well.
 MEDIATYPE_AUDIO = 3     # ..an audio file. So FILEVERSION_PREVIEW is an audio file as well.
-# MEDIATYPE_IMAGESEQ = 4  # ..an image sequence. So FILEVERSION_PREVIEW is a video wihtout audio.
 
 
 APPENDAGETYPE_FILE = 1      # ..An Appendge will contain a single file only.

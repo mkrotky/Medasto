@@ -237,7 +237,9 @@ class Appendage:
     the final Job's status calculation. The GUI-Client has also an option to hide them.
 
     `haspreviews` (bool) - if true then Medasto was able to create a preview video and
-    thumbnail right after the upload.
+    thumbnail right after the upload. Once a preview has been set it cannot be changed
+    or removed. It can be created either by uploading an original version
+    (constants.FILEVERSION_ORIGINAL) or bei uploading a preview file separately.
 
     `appendagetype` (int) - See constants.APPENDAGETYPE_* for possible values.
     This field indicates whether the content of this Appendage is a single file, an
@@ -246,18 +248,17 @@ class Appendage:
     `mediatype` (int) - See constants.MEDIATYPE_* for possible values.
     If the corresponding file has not been uploaded yet or if Medasto does not recognize
     the media format then this field will always hold MEDIATYPE_UNKNOWN. In that case
-    `haspreviews` will be always false.
+    `haspreviews` will be always false. Please not that since Medasto Version 2.x you
+    can supply separate files for the preview. This field is always related to the
+    preview version. So for example if your original upload is a still image but you
+    supply a mp3 file for the preview (for whatever reason you might have) then this
+    field will hold the constant constants.MEDIATYPE_AUDIO.
 
-    `isuploadcomplete` (bool) - True if the server received the file or image sequence
-    completely. Before that it is False. In order to check whether a file is available
-    for download you should always read the field `isonline` (see next field).
+    `isonline` (bool) - This gets always set to True as soon as an upload is complete.
+    If an Appendage gets set offline this filed will revert back to FALSE.
 
-    `isonline` (bool) - This gets always set to True as soon as an upload is complete
-    BUT if Medasto is running in the operation mode "DROP-OVER" then files are getting
-    deleted after a few days and this will then revert back to False while
-    the field `isuploadcomplete` remains True.
-
-    `size` (int) - The value is 0 as long as the upload is not complete. In case of a
+    `size` (int) - The value is initially 0 and gets set when the first upload is complete.
+    If an Appendage is set offline this field will maintain its current value. In case of a
     single file this will be the size of that file. In case of an image sequence it
     presents the sum of all image files together.
 
@@ -265,7 +266,7 @@ class Appendage:
     at least one 'Message'. So this list will never be empty.
     """
     def __init__(self, appendageid, filename, isfrozen, haspreviews, appendagetype, mediatype,
-                 isuploadcomplete, isonline, size, msg_list):
+                 isonline, size, msg_list):
 
         self.appendageid = appendageid
         self.filename = filename
@@ -273,7 +274,6 @@ class Appendage:
         self.haspreviews = haspreviews
         self.appendagetype = appendagetype
         self.mediatype = mediatype
-        self.isuploadcomplete = isuploadcomplete
         self.isonline = isonline
         self.size = size
         self.msg_list = msg_list
@@ -309,7 +309,6 @@ class Appendage:
                          'haspreviews', self.haspreviews,
                          'appendagetype', self.appendagetype,
                          'mediatype', self.mediatype,
-                         'isuploadcomplete', self.isuploadcomplete,
                          'size', self.size,
                          'isonline', self.isonline
                          )

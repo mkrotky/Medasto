@@ -1,9 +1,22 @@
 Release Notes
 
 ----------------------------------------------------------------------------
+V 2.0.0:
+
+- Added methods update_shotjob_uploadpreview() and update_assetjob_uploadpreview() to the ClientService class.
+Since Medasto V 2.x you can provide a separate file for the preview creation instead of letting Medasto
+automatically use the media from the original upload.
+
+- Added to all upload*() methods the boolean parameter 'createPreview'.
+
+- Removed the field 'uploadComplete' from the class 'Appendage'. Please use the field 'isonline'
+ in order to check the media status.
+
+
+----------------------------------------------------------------------------
 V 1.1.0:
 
-- removed the constant MEDIATYPE_IMAGESEQ from the medasto.consants module because this type of media is now identified
+- removed the constant MEDIATYPE_IMAGESEQ from the medasto.constants module because this type of media is now identified
 by the new constant constants.APPENDAGE_TYPE_IMAGESEQ
 
 - Introduced the 3 new APPENDAGE_TYPE_ constants FILE, FOLDER and IMAGESEQ. Because now it is also possible to upload

@@ -14,7 +14,7 @@ dependencies.
 If a class name (CamelCase) is enclosed in single quotes (') then it is
 defined in the module Domain.py. There you can find additional documentation.
 
-If the documenation refers to local variables or method parameters then the
+If the documentation refers to local variables or method parameters then the
 attribute names are enclosed in (`).
 
 It is assumed that the user of this API is familiar with the general concepts
@@ -150,7 +150,6 @@ from . import _remoteservice
 from . import domain
 from . import goodies
 
-
 __author__ = 'Michael Krotky'
 
 _FOLDER_UPLOAD_ALL_COMPLETE = -1
@@ -165,6 +164,7 @@ class ClientService:
 
     See the doc of this module for more info.
     """
+
     def __init__(self, customerid, username, password, waitaftererror=10, maxtriesiferror=10):
         """Constructor.
 
@@ -307,7 +307,7 @@ class ClientService:
             raise Exception(_ERROR_MSG_ASSET_IDS)
         return json.loads(result_str, object_hook=_objhook_job)
 
-    def update_assetjob_addglobalmessage(self,  msgtext, statusid, asset_list_id=None, asset_id=None,
+    def update_assetjob_addglobalmessage(self, msgtext, statusid, asset_list_id=None, asset_id=None,
                                          custom_asset_id=None, job_id=None, jobdef_id=None):
         """Adds a 'Message' to the Job.
 
@@ -331,7 +331,7 @@ class ClientService:
             raise Exception(_ERROR_MSG_ASSET_IDS)
         self._rmtservice.request(url, method='PUT', body=jsondata)
 
-    def update_assetjob_addappendagemessage(self,  msgtext, statusid, appendage_id, asset_list_id=None, asset_id=None,
+    def update_assetjob_addappendagemessage(self, msgtext, statusid, appendage_id, asset_list_id=None, asset_id=None,
                                             custom_asset_id=None, job_id=None, jobdef_id=None):
         """Adds a 'Message' to the specified `appendage_id`.
 
@@ -389,7 +389,8 @@ class ClientService:
         if asset_list_id is not None and asset_id is not None:
             url = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
                                  jobordef['isDefId'], 'addAppendage')
-            jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename, appendageType=appendage_type))
+            jsondata = json.dumps(
+                dict(text=msgtext, statusId=statusid, fileName=filename, appendageType=appendage_type))
         elif custom_asset_id is not None:
             url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], "addAppendage")
             jsondata = json.dumps(dict(text=msgtext, statusId=statusid, fileName=filename,
@@ -399,7 +400,7 @@ class ClientService:
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
         return int(result_str)
 
-    def update_assetjob_addappendage_imageseq(self,  msgtext, statusid, seqname, fps, asset_list_id=None,
+    def update_assetjob_addappendage_imageseq(self, msgtext, statusid, seqname, fps, asset_list_id=None,
                                               asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
         """Adds an 'Appendage' to the specified Job.
 
@@ -442,18 +443,19 @@ class ClientService:
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
         return int(result_str)
 
-    def update_assetjob_uploadfile(self, appendage_id, filepath, asset_list_id=None,
+    def update_assetjob_uploadfile(self, appendage_id, filepath, create_preview, asset_list_id=None,
                                    asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a single file after a successful
         execution of update_assetjob_addappendage(..) with
-        appendage_type=constants.APPENDAGETYPE_FILE. It can be called only
-        once for an 'Appendage'. This is done so on purpose to prevent the file
-        of an existing 'Appendage' from being inadvertently overwritten.
+        appendage_type=constants.APPENDAGETYPE_FILE.
+        This method will fail if the 'Appendage' is currently online.
 
         The `filepath` for the file to be uploaded can be either a str or a byte-like
         object as expected by the native 'open' function of Python.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -462,10 +464,10 @@ class ClientService:
         extra_headers = {}
         if asset_list_id is not None and asset_id is not None:
             url = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
-                                 jobordef['isDefId'], 'appendage', appendage_id, 'uploadSP')
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'uploadSP', create_preview)
         elif custom_asset_id is not None:
             url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, "uploadSP")
+                                 appendage_id, "uploadSP", create_preview)
             extra_headers['customId'] = custom_asset_id
         else:
             raise Exception(_ERROR_MSG_ASSET_IDS)
@@ -474,20 +476,21 @@ class ClientService:
             self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
                                      extra_headers=extra_headers)
 
-    def update_assetjob_uploadfolder(self,  folderpath, appendage_id, asset_list_id=None, asset_id=None,
+    def update_assetjob_uploadfolder(self, folderpath, create_preview, appendage_id, asset_list_id=None, asset_id=None,
                                      custom_asset_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a folder (recursively) after a successful
         execution of update_assetjob_addappendage(..) with
-        appendage_type=constants.APPENDAGETYPE_FOLDER. It can be called only
-        once for an 'Appendage'. This is done so on purpose to prevent files
-        of an existing 'Appendage' from being inadvertently overwritten.
+        appendage_type=constants.APPENDAGETYPE_FOLDER.
+        This method will fail if the 'Appendage' is currently online.
 
         If this method returns without raising an Exception the upload can be expected
         to be complete.
 
         The `folderpath` for the folder to be uploaded.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -500,11 +503,11 @@ class ClientService:
         if asset_list_id is not None and asset_id is not None:
             url = _url_from_args(
                 'assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
-                appendage_id, 'initFolderUpload')
+                appendage_id, 'initFolderUpload', create_preview)
             jsondata = json.dumps(dict(pathlist=pathlist))
         elif custom_asset_id is not None:
             url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, "initFolderUpload")
+                                 appendage_id, "initFolderUpload", create_preview)
             jsondata = json.dumps(dict(pathlist=pathlist, customId=custom_asset_id))
         else:
             raise Exception(_ERROR_MSG_ASSET_IDS)
@@ -525,20 +528,23 @@ class ClientService:
                     "Given folder '" + folderpath + "' does not contain the requested file '" + absfilepath) + "'."
             url = _url_from_args("processAppendageFolderUpload", "uploadJob", uploadjob_id, 'file', nextfile_id)
             with open(absfilepath, 'rb') as file:
-                nextfile_id = int(self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream'))
+                nextfile_id = int(
+                    self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream'))
 
-    def update_assetjob_init_imageseq_upload(self,  filenamelist, appendage_id, asset_list_id=None, asset_id=None,
+    def update_assetjob_init_imageseq_upload(self, filenamelist, create_preview, appendage_id, asset_list_id=None,
+                                             asset_id=None,
                                              custom_asset_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' for an image sequence has been added.
 
         This method is used to initialize the upload of an image sequence after a successful
-        execution of update_assetjob_addappendage_imageseq(..). It can be
-        called only once for an 'Appendage'. This is done so on purpose to prevent
-        the image files of an existing 'Appendage' from being inadvertently overwritten.
+        execution of update_assetjob_addappendage_imageseq(..).
+        This method will fail if the 'Appendage' is currently online.
 
         `filenamelist` must point to a list containing all file names (str)
         that belong to the image sequence. The items in the list must be really
         just names and not paths.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -550,11 +556,11 @@ class ClientService:
         if asset_list_id is not None and asset_id is not None:
             url = _url_from_args(
                 'assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
-                appendage_id, 'initImageSeqUpload')
+                appendage_id, 'initImageSeqUpload', create_preview)
             jsondata = json.dumps(dict(fileNameList=filenamelist))
         elif custom_asset_id is not None:
             url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, "initImageSeqUpload")
+                                 appendage_id, "initImageSeqUpload", create_preview)
             jsondata = json.dumps(dict(fileNameList=filenamelist, customId=custom_asset_id))
         else:
             raise Exception(_ERROR_MSG_ASSET_IDS)
@@ -581,7 +587,7 @@ class ClientService:
         url = _url_from_args("processImageSeqUpload", "uploadJob", uploadjob_id)
         with open(filepath, 'rb') as file:
             nextitem = self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
-                                               extra_headers=extra_headers)
+                                                extra_headers=extra_headers)
         return nextitem
 
     def upload_imageseq_getnext(self, uploadjob_id):
@@ -659,6 +665,38 @@ class ClientService:
 
     def _walktree_error_handler(self, ex):
         raise ex  # OSError with filename attribute
+
+    def update_assetjob_uploadpreview(self, appendage_id, filepath, asset_list_id=None,
+                                      asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
+        """To be used for preview uploads after an 'Appendage' has been added.
+
+        This method can be used to upload a single preview file. It will fail if the
+        'Appendage' already has a preview. The preview file can be either a video, a
+        still image or an audio file. It is completely independent of the original
+        upload. If the supplied file is a compatible format Medasto will used it
+        directly otherwise it will try to convert it and discard the file of this upload.
+
+        The `filepath` for the file to be uploaded can be either a str or a byte-like
+        object as expected by the native 'open' function of Python.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+        """
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        extra_headers = {}
+        if asset_list_id is not None and asset_id is not None:
+            url = _url_from_args('assetList', asset_list_id, 'asset', asset_id, 'job', jobordef['id'],
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'uplPrevSP')
+        elif custom_asset_id is not None:
+            url = _url_from_args("assetList", "asset_c", "job", jobordef['id'], jobordef['isDefId'], 'appendage',
+                                 appendage_id, "uplPrevSP")
+            extra_headers['customId'] = custom_asset_id
+        else:
+            raise Exception(_ERROR_MSG_ASSET_IDS)
+
+        with open(filepath, 'rb') as file:
+            self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
+                                     extra_headers=extra_headers)
 
     def update_assetjob_freeze_appendage(self, freeze, appendage_id, asset_list_id=None, asset_id=None,
                                          custom_asset_id=None, job_id=None, jobdef_id=None):
@@ -831,8 +869,7 @@ class ClientService:
         url = _url_from_args('shotList', shot_list_id, 'assign')
         self._rmtservice.request(url, method=method, body=jsondata)
 
-
-# *********************************************** Shot Part *********************************************************
+    # *********************************************** Shot Part *********************************************************
 
     def get_shot_statuslist(self):
         """Returns a list with 'Status' objects which are valid vor all 'ShotList's. """
@@ -1059,7 +1096,8 @@ class ClientService:
                                  jobordef['id'], jobordef['isDefId'], 'addMessage')
             jsondata = json.dumps(dict(customId=custom_shot_id, statusId=statusid, text=msgtext))
         elif custom_shot_id is not None:
-            url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'addMessage')
+            url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'],
+                                 'addMessage')
             jsondata = json.dumps(dict(customId=custom_shot_id, statusId=statusid, text=msgtext))
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
@@ -1132,7 +1170,7 @@ class ClientService:
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
         return int(result_str)
 
-    def update_shotjob_addappendage_imageseq(self,  msgtext, statusid, seqname, fps, shotlist_id=None, stage_id=None,
+    def update_shotjob_addappendage_imageseq(self, msgtext, statusid, seqname, fps, shotlist_id=None, stage_id=None,
                                              shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
         """Adds an 'Appendage' to the specified 'Job'.
 
@@ -1174,18 +1212,19 @@ class ClientService:
         result_str = self._rmtservice.request(url, method='PUT', body=jsondata)
         return int(result_str)
 
-    def update_shotjob_uploadfile(self, appendage_id, filepath, shotlist_id=None, stage_id=None,
+    def update_shotjob_uploadfile(self, appendage_id, filepath, create_preview, shotlist_id=None, stage_id=None,
                                   shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a single file after a successful
         execution of update_shotjob_addappendage(..) with
-        appendage_type=constants.APPENDAGETYPE_FILE. It can be called only
-        once for an 'Appendage'. This is done so on purpose to prevent the file
-        of an existing 'Appendage' from being inadvertently overwritten.
+        appendage_type=constants.APPENDAGETYPE_FILE.
+        This method will fail if the 'Appendage' is currently online.
 
         The `filepath` for the file to be uploaded can be either a str or a byte-like
         object as expected by the native 'open' function of Python.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -1194,10 +1233,10 @@ class ClientService:
         extra_headers = {}
         if shotlist_id is not None and stage_id is not None and shot_id is not None:
             url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
-                                 jobordef['isDefId'], 'appendage', appendage_id, 'uploadSP')
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'uploadSP', create_preview)
         elif custom_shot_id is not None:
             url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, "uploadSP")
+                                 appendage_id, "uploadSP", create_preview)
             extra_headers['customId'] = custom_shot_id
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
@@ -1206,20 +1245,21 @@ class ClientService:
             self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
                                      extra_headers=extra_headers)
 
-    def update_shotjob_uploadfolder(self,  folderpath, appendage_id, shotlist_id=None, stage_id=None,
+    def update_shotjob_uploadfolder(self, folderpath, create_preview, appendage_id, shotlist_id=None, stage_id=None,
                                     shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' has been added.
 
         This method is used to upload a folder (recursively) after a successful
         execution of update_shotjob_addappendage(..) with
-        appendage_type=constants.APPENDAGETYPE_FOLDER. It can be called only
-        once for an 'Appendage'. This is done so on purpose to prevent files
-        of an existing 'Appendage' from being inadvertently overwritten.
+        appendage_type=constants.APPENDAGETYPE_FOLDER.
+        This method will fail if the 'Appendage' is currently online.
 
         If this method returns without raising an Exception the upload can be expected
         to be complete.
 
         The `folderpath` for the folder to be uploaded.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -1231,11 +1271,11 @@ class ClientService:
         jobordef = _job_or_def_id(jobdef_id, job_id)
         if shotlist_id is not None and stage_id is not None and shot_id is not None:
             url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
-                                 jobordef['isDefId'], 'appendage', appendage_id, 'initFolderUpload')
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'initFolderUpload', create_preview)
             jsondata = json.dumps(dict(pathlist=pathlist))
         elif custom_shot_id is not None:
             url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, 'initFolderUpload')
+                                 appendage_id, 'initFolderUpload', create_preview)
             jsondata = json.dumps(dict(pathlist=pathlist, customId=custom_shot_id))
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
@@ -1259,18 +1299,20 @@ class ClientService:
                 nextfile_id = int(self._rmtservice.request(
                     url, method='POST', body=file, contenttype='application/octet-stream'))
 
-    def update_shotjob_init_imageseq_upload(self,  filenamelist, appendage_id, shotlist_id=None, stage_id=None,
+    def update_shotjob_init_imageseq_upload(self, filenamelist, create_preview, appendage_id, shotlist_id=None,
+                                            stage_id=None,
                                             shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
         """To be used for uploads after an 'Appendage' for an image sequence has been added.
 
         This method is used to initialize the upload of an image sequence after a successful
-        execution of update_shotjob_addappendage_imageseq(..). It can be
-        called only once for an 'Appendage'. This is done so on purpose to prevent
-        the image files of an existing 'Appendage' from being inadvertently overwritten.
+        execution of update_shotjob_addappendage_imageseq(..).
+        This method will fail if the 'Appendage' is currently online.
 
         `filenamelist` must point to a list containing all file names (str)
         that belong to the image sequence. The items in the list must be really
         just names and not paths.
+
+        `create_preview` (bool) - Use TRUE if Medasto shall try to create a preview from the upload.
 
         As for the job identification you specify either the `job_id`('Job'.jobid) OR
         the `jobdef_id`('JobDefinition'.jobdefid).
@@ -1281,16 +1323,48 @@ class ClientService:
         jobordef = _job_or_def_id(jobdef_id, job_id)
         if shotlist_id is not None and stage_id is not None and shot_id is not None:
             url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
-                                 jobordef['isDefId'], 'appendage', appendage_id, 'initImageSeqUpload')
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'initImageSeqUpload', create_preview)
             jsondata = json.dumps(dict(fileNameList=filenamelist))
         elif custom_shot_id is not None:
             url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
-                                 appendage_id, "initImageSeqUpload")
+                                 appendage_id, "initImageSeqUpload", create_preview)
             jsondata = json.dumps(dict(fileNameList=filenamelist, customId=custom_shot_id))
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
         uploadjob_id = self._rmtservice.request(url, method='POST', body=jsondata)
         return uploadjob_id
+
+    def update_shotjob_uploadpreview(self, appendage_id, filepath, shotlist_id=None, stage_id=None,
+                                     shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
+        """To be used for preview uploads after an 'Appendage' has been added.
+
+        This method can be used to upload a single preview file. It will fail if the
+        'Appendage' already has a preview. The preview file can be either a video, a
+        still image or an audio file. It is completely independent of the original
+        upload. If the supplied file is a compatible format Medasto will used it
+        directly otherwise it will try to convert it and discard the file of this upload.
+
+        The `filepath` for the file to be uploaded can be either a str or a byte-like
+        object as expected by the native 'open' function of Python.
+
+        As for the job identification you specify either the `job_id`('Job'.jobid) OR
+        the `jobdef_id`('JobDefinition'.jobdefid).
+        """
+        jobordef = _job_or_def_id(jobdef_id, job_id)
+        extra_headers = {}
+        if shotlist_id is not None and stage_id is not None and shot_id is not None:
+            url = _url_from_args('shotList', shotlist_id, 'stage', stage_id, 'shot', shot_id, 'job', jobordef['id'],
+                                 jobordef['isDefId'], 'appendage', appendage_id, 'uplPrevSP')
+        elif custom_shot_id is not None:
+            url = _url_from_args('shotList', 'stage', 'shot_c', 'job', jobordef['id'], jobordef['isDefId'], 'appendage',
+                                 appendage_id, "uplPrevSP")
+            extra_headers['customId'] = custom_shot_id
+        else:
+            raise Exception(_ERROR_MSG_SHOT_IDS)
+
+        with open(filepath, 'rb') as file:
+            self._rmtservice.request(url, method='POST', body=file, contenttype='application/octet-stream',
+                                     extra_headers=extra_headers)
 
     def update_shotjob_freeze_appendage(self, freeze, appendage_id, shotlist_id=None, stage_id=None,
                                         shot_id=None, custom_shot_id=None, job_id=None, jobdef_id=None):
@@ -1402,7 +1476,7 @@ class ClientService:
 
         with open(filepath, 'rb') as file:
             self._rmtservice.request(url, method='PUT', body=file, contenttype='application/octet-stream',
-                                    extra_headers=extra_headers)
+                                     extra_headers=extra_headers)
 
     def update_stbsheet_textcontainer(self, stbsheet_id, textcontainer_id, text, shotlist_id=None, stage_id=None,
                                       shot_id=None, custom_shot_id=None):
@@ -1527,7 +1601,7 @@ class ClientService:
 
         with open(filepath, 'rb') as file:
             self._rmtservice.request(url, method='PUT', body=file, contenttype='application/octet-stream',
-                                    extra_headers=extra_headers)
+                                     extra_headers=extra_headers)
 
     def update_shot_remove_stbsheet(self, stbsheet_id, shotlist_id=None, stage_id=None,
                                     shot_id=None, custom_shot_id=None):
@@ -1910,7 +1984,7 @@ class ClientService:
         jsondata = json.dumps(dct)
         self._rmtservice.request(url, method='PUT', body=jsondata)
 
-# ******************************************** download  ******************************************************
+    # ******************************************** download  ******************************************************
 
     def download_assetfile(self, filepath, appendage_id, fileversion,
                            asset_list_id=None, asset_id=None, custom_asset_id=None, job_id=None, jobdef_id=None):
@@ -2257,7 +2331,7 @@ class ClientService:
         else:
             raise Exception(_ERROR_MSG_SHOT_IDS)
 
-# ************************************************ goodies **********************************************************
+            # ************************************************ goodies **********************************************************
 
     def create_pathmanager(self, archive_path):
         """Returns an instance of goodies.LocalArchivePathManager.
@@ -2408,7 +2482,7 @@ def _objhook_job(dctjob):
             for msg in entry['messages']:
                 msglist.append(_objhook_message(msg))
             appendage = domain.Appendage(entry['id'], entry['fileName'], entry['frozen'], entry['hasPreviews'],
-                                         entry['appendageType'], entry['mediaType'], entry['uploadComplete'],
+                                         entry['appendageType'], entry['mediaType'],
                                          entry['mediaOnline'], entry['size'], msglist)
             job_entries.append(appendage)
         else:
